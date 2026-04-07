@@ -5,6 +5,11 @@ data class TrueLayerCreatePaymentRequest(
     val currency: String,
     val user: TrueLayerUser,
     val payment_method: TrueLayerPaymentMethod,
+    val hosted_page: TrueLayerHostedPage,
+)
+
+data class TrueLayerHostedPage(
+    val return_uri: String,
 )
 
 data class TrueLayerUser(

@@ -2,6 +2,7 @@ package com.amex.payments.infrastructure.persistence.truelayer.service
 
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerBeneficiary
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerCreatePaymentRequest
+import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerHostedPage
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerPaymentMethod
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerProviderSelection
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerSchemeSelection
@@ -18,6 +19,9 @@ class TrueLayerCreatePaymentRequestFactory {
 
     @ConfigProperty(name = "truelayer.beneficiary-name")
     lateinit var beneficiaryName: String
+
+    @ConfigProperty(name = "truelayer.redirect-uri")
+    lateinit var redirectUri: String
 
     fun from(request: CreatePaymentIntentRequest): TrueLayerCreatePaymentRequest {
         return TrueLayerCreatePaymentRequest(
@@ -50,6 +54,10 @@ class TrueLayerCreatePaymentRequestFactory {
                             account_holder_name = beneficiaryName,
                             reference = sanitizeReference(request.endToEndId),
                         ),
+                ),
+            hosted_page =
+                TrueLayerHostedPage(
+                    return_uri = redirectUri,
                 ),
         )
     }
