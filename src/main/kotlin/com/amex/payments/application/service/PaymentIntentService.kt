@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import jakarta.transaction.Transactional
 import jakarta.ws.rs.NotFoundException
+import org.eclipse.microprofile.config.inject.ConfigProperty
 import org.example.com.amex.payments.api.dto.CreatePaymentIntentRequest
 import org.example.com.amex.payments.api.dto.PaymentIntentResponse
 import java.time.Instant
@@ -24,6 +25,9 @@ class PaymentIntentService {
 
     @Inject
     lateinit var trueLayerGateway: TrueLayerGateway
+
+    @ConfigProperty(name = "truelayer.redirect-uri")
+    lateinit var redirectUri: String
 
     @Transactional
     fun create(request: CreatePaymentIntentRequest): PaymentIntentResponse {
@@ -49,7 +53,7 @@ class PaymentIntentService {
         val tlResponse = trueLayerGateway.createPayment(tlRequest)
 
         entity.externalProviderPaymentId = tlResponse.id
-        entity.redirectUrl = tlResponse.authorizationFlowUrl
+        entity.redirectUrl = tlResponse.redirectUrl(redirectUri)
         entity.status = PaymentStatus.AUTHORIZATION_REQUIRED.name
         entity.updatedAt = Instant.now()
 
