@@ -8,5 +8,6 @@ import jakarta.enterprise.context.ApplicationScoped
 class PaymentIntentRepository : PanacheRepository<PaymentIntentEntity> {
     fun findByIntentId(id: String): PaymentIntentEntity? = find("id", id).firstResult()
 
-    fun findByEndToEndId(endToEndId: String): PaymentIntentEntity? = find("endToEndId", endToEndId).firstResult()
+    fun findByExternalProviderPaymentId(externalProviderPaymentId: String): PaymentIntentEntity? =
+        find("externalProviderPaymentId", externalProviderPaymentId).firstResult()
 }
