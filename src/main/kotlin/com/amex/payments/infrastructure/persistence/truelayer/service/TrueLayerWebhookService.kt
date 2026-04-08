@@ -1,4 +1,4 @@
-package com.amex.payments.application.service
+package com.amex.payments.infrastructure.persistence.truelayer.service
 
 import com.amex.payments.domain.model.PaymentStatus
 import com.amex.payments.infrastructure.persistence.entity.PaymentIntentEventEntity
