@@ -14,6 +14,7 @@ import jakarta.ws.rs.core.HttpHeaders
 import jakarta.ws.rs.core.MediaType
 import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.core.UriInfo
+import org.eclipse.microprofile.config.inject.ConfigProperty
 
 @Path("/webhooks/truelayer")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -28,27 +29,32 @@ class TrueLayerWebhookResource {
     @Inject
     lateinit var objectMapper: ObjectMapper
 
+    @ConfigProperty(name = "truelayer.webhook.verify-signature", defaultValue = "true")
+    var verifySignature: Boolean = true
+
     @POST
     fun receive(
         rawBody: String,
         @Context httpHeaders: HttpHeaders,
         @Context uriInfo: UriInfo,
     ): Response {
-        val tlSignature =
-            httpHeaders.getHeaderString("Tl-Signature")
-                ?: return Response.status(Response.Status.UNAUTHORIZED).build()
+        if (verifySignature) {
+            val tlSignature =
+                httpHeaders.getHeaderString("Tl-Signature")
+                    ?: return Response.status(Response.Status.UNAUTHORIZED).build()
 
-        val headersMap: Map<String, String> =
-            httpHeaders.requestHeaders
-                .entries
-                .associate { (key, values) -> key to values.joinToString(",") }
+            val headersMap: Map<String, String> =
+                httpHeaders.requestHeaders.entries.associate { (key, values) ->
+                    key to values.joinToString(",")
+                }
 
-        verificationService.verify(
-            tlSignature = tlSignature,
-            path = "/${uriInfo.path}",
-            headers = headersMap,
-            rawBody = rawBody,
-        )
+            verificationService.verify(
+                tlSignature = tlSignature,
+                path = "/${uriInfo.path}",
+                headers = headersMap,
+                rawBody = rawBody,
+            )
+        }
 
         val event = objectMapper.readValue(rawBody, TrueLayerWebhookEvent::class.java)
         webhookService.handle(event)
