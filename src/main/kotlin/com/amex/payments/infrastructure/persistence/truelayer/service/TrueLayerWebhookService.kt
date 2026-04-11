@@ -2,8 +2,10 @@ package com.amex.payments.infrastructure.persistence.truelayer.service
 
 import com.amex.payments.domain.model.PaymentStatus
 import com.amex.payments.infrastructure.persistence.entity.PaymentIntentEntity
+import com.amex.payments.infrastructure.persistence.entity.PaymentIntentEventEntity
 import com.amex.payments.infrastructure.persistence.repository.PaymentIntentEventRepository
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerWebhookEvent
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import jakarta.persistence.EntityManager
@@ -18,6 +20,9 @@ class TrueLayerWebhookService {
 
     @Inject
     lateinit var entityManager: EntityManager
+
+    @Inject
+    lateinit var objectMapper: ObjectMapper
 
     companion object {
         private val LOG: Logger = Logger.getLogger(TrueLayerWebhookService::class.java)
@@ -53,7 +58,7 @@ class TrueLayerWebhookService {
             return
         }
 
-        val newStatus =
+        val nextStatus =
             when (event.eventType) {
                 "payment_executed" -> PaymentStatus.EXECUTED.name
                 "payment_creditable" -> PaymentStatus.EXECUTED.name
@@ -64,20 +69,43 @@ class TrueLayerWebhookService {
                         event.eventId,
                         event.eventType,
                     )
+                    persistEvent(paymentIntent, event, providerStatus = null)
                     return
                 }
             }
 
-        paymentIntent.status = newStatus
-        paymentIntent.updatedAt = Instant.now()
+        val currentStatus = paymentIntent.status
+        val shouldUpdate =
+            when {
+                currentStatus == PaymentStatus.SETTLED.name -> false
+                nextStatus == PaymentStatus.SETTLED.name -> true
+                currentStatus == PaymentStatus.EXECUTED.name && nextStatus == PaymentStatus.EXECUTED.name -> false
+                else -> true
+            }
 
-        LOG.infof(
-            "Updated payment intent id=%s paymentId=%s to status=%s from webhook eventId=%s",
-            paymentIntent.id,
-            paymentId,
-            newStatus,
-            event.eventId,
-        )
+        if (shouldUpdate) {
+            paymentIntent.status = nextStatus
+            paymentIntent.updatedAt = Instant.now()
+
+            LOG.infof(
+                "Updated payment intent id=%s paymentId=%s from status=%s to status=%s from webhook eventId=%s",
+                paymentIntent.id,
+                paymentId,
+                currentStatus,
+                nextStatus,
+                event.eventId,
+            )
+        } else {
+            LOG.infof(
+                "Ignored status regression for payment intent id=%s paymentId=%s currentStatus=%s incomingEventType=%s",
+                paymentIntent.id,
+                paymentId,
+                currentStatus,
+                event.eventType,
+            )
+        }
+
+        persistEvent(paymentIntent, event, providerStatus = nextStatus)
     }
 
     private fun findPaymentIntentByExternalProviderPaymentId(paymentId: String): PaymentIntentEntity? =
@@ -92,4 +120,25 @@ class TrueLayerWebhookService {
             .setParameter("paymentId", paymentId)
             .resultList
             .firstOrNull()
+
+    private fun persistEvent(
+        paymentIntent: PaymentIntentEntity,
+        event: TrueLayerWebhookEvent,
+        providerStatus: String?,
+    ) {
+        val paymentId = event.paymentId ?: return
+
+        val eventEntity =
+            PaymentIntentEventEntity().apply {
+                eventId = event.eventId
+                paymentIntentId = paymentIntent.id
+                externalProviderPaymentId = paymentId
+                eventType = event.eventType
+                this.providerStatus = providerStatus
+                payload = objectMapper.writeValueAsString(event)
+                createdAt = Instant.now()
+            }
+
+        paymentIntentEventRepository.persist(eventEntity)
+    }
 }
