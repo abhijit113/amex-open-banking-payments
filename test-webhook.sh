@@ -75,8 +75,8 @@ curl -X POST http://localhost:8081/payment-intents \
   -H "Content-Type: application/json" \
   -d '{
     "traceId":"550e8400-e29b-41d4-a716-446655440003",
-    "endToEndId":"e2e-012",
-    "amountInMinor":127,
+    "endToEndId":"e2e-014",
+    "amountInMinor":128,
     "currency":"EUR",
     "provider":"mock-payments-fr-redirect"
   }' | jq .
