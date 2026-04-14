@@ -161,12 +161,16 @@ echo ""
 
 echo "4. Creating a payment intent..."
 
+# Generate random traceId in UUID format and endToEndId with timestamp
+TRACE_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+END_TO_END_ID="e2e-$(date +%s)"
+
 # Create a payment intent
 PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8081/payment-intents \
   -H "Content-Type: application/json" \
   -d '{
-    "traceId":"550e8400-e29b-41d4-a716-446655440003",
-    "endToEndId":"e2e-014",
+    "traceId":"'"$TRACE_ID"'",
+    "endToEndId":"'"$END_TO_END_ID"'",
     "amountInMinor":100,
     "currency":"EUR",
     "provider":"mock-payments-fr-redirect"
