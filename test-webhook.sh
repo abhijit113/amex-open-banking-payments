@@ -13,6 +13,56 @@ export TRUELAYER_PRIVATE_KEY_PATH="$HOME/.truelayer/ec512-private-key.pem"
 
 echo "=== TrueLayer Webhook Testing Script ==="
 echo ""
+
+# Check if PostgreSQL is running
+echo "0. Checking PostgreSQL status..."
+if ! pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+  echo "⏳ PostgreSQL is not running. Starting it..."
+  brew services start postgresql@16 > /dev/null 2>&1
+
+  # Wait for PostgreSQL to start
+  sleep 3
+
+  # Verify it started
+  if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+    echo "✅ PostgreSQL started successfully"
+  else
+    echo "❌ Failed to start PostgreSQL"
+    exit 1
+  fi
+else
+  echo "✅ PostgreSQL is already running"
+fi
+echo ""
+
+# Check if the amex_payments database exists, create it if needed
+echo "   Checking database 'amex_payments'..."
+if psql -U abhijitsen -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='amex_payments'" | grep -q 1; then
+  echo "   ✅ Database 'amex_payments' exists"
+else
+  echo "   ⏳ Creating database 'amex_payments'..."
+  createdb -U abhijitsen amex_payments
+  echo "   ✅ Database 'amex_payments' created"
+fi
+echo ""
+
+# Check if the application is running
+if ! curl -s http://localhost:8081/ > /dev/null 2>&1; then
+  echo "❌ Application is not running on localhost:8081"
+  echo ""
+  echo "   To run the application with the correct environment variables:"
+  echo "   cd /Users/abhijitsen/IdeaProjects/amex-open-banking-payments"
+  echo "   export TRUELAYER_CLIENT_ID=\"$TRUELAYER_CLIENT_ID\""
+  echo "   export TRUELAYER_CLIENT_SECRET=\"$TRUELAYER_CLIENT_SECRET\""
+  echo "   export TRUELAYER_MERCHANT_ACCOUNT_ID=\"$TRUELAYER_MERCHANT_ACCOUNT_ID\""
+  echo "   export TRUELAYER_SIGNING_KEY_ID=\"$TRUELAYER_SIGNING_KEY_ID\""
+  echo "   export TRUELAYER_PRIVATE_KEY_PATH=\"$TRUELAYER_PRIVATE_KEY_PATH\""
+  echo "   ./gradlew quarkusDev"
+  exit 1
+fi
+
+echo "✅ Application is running on localhost:8081"
+echo ""
 echo "1. Getting access token from TrueLayer auth server..."
 
 # Get access token
@@ -71,7 +121,7 @@ echo ""
 echo "4. Creating a payment intent..."
 
 # Create a payment intent
-curl -X POST http://localhost:8081/payment-intents \
+PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8081/payment-intents \
   -H "Content-Type: application/json" \
   -d '{
     "traceId":"550e8400-e29b-41d4-a716-446655440003",
@@ -79,7 +129,16 @@ curl -X POST http://localhost:8081/payment-intents \
     "amountInMinor":128,
     "currency":"EUR",
     "provider":"mock-payments-fr-redirect"
-  }' | jq .
+  }')
+
+# Check if the response is valid JSON
+if echo "$PAYMENT_RESPONSE" | jq . > /dev/null 2>&1; then
+  echo "$PAYMENT_RESPONSE" | jq .
+else
+  echo "❌ Payment intent creation failed with response:"
+  echo "$PAYMENT_RESPONSE"
+  exit 1
+fi
 
 echo ""
 echo "✅ Test completed!"
