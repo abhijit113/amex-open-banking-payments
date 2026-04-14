@@ -18,16 +18,36 @@ echo ""
 echo "0. Checking PostgreSQL status..."
 if ! pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
   echo "⏳ PostgreSQL is not running. Starting it..."
-  brew services start postgresql@16 > /dev/null 2>&1
 
-  # Wait for PostgreSQL to start
-  sleep 3
+  # Set locale environment variables before starting PostgreSQL
+  export LC_ALL=en_US.UTF-8
+  export LANG=en_US.UTF-8
 
-  # Verify it started
-  if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-    echo "✅ PostgreSQL started successfully"
-  else
-    echo "❌ Failed to start PostgreSQL"
+  # Kill any stray PostgreSQL processes
+  pkill -f "postgres -D" > /dev/null 2>&1 || true
+  sleep 1
+
+  # Remove stale lock file if it exists
+  rm -f /opt/homebrew/var/postgresql@16/postmaster.pid > /dev/null 2>&1 || true
+
+  # Start PostgreSQL directly (more reliable than brew services)
+  /opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/postgresql@16 -l /tmp/postgres.log start > /dev/null 2>&1 || true
+
+  # Wait for PostgreSQL to start (with retries)
+  MAX_RETRIES=10
+  RETRY_COUNT=0
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+      echo "✅ PostgreSQL started successfully"
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    sleep 1
+  done
+
+  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ Failed to start PostgreSQL. Check logs:"
+    tail -10 /tmp/postgres.log
     exit 1
   fi
 else
@@ -48,20 +68,41 @@ echo ""
 
 # Check if the application is running
 if ! curl -s http://localhost:8081/ > /dev/null 2>&1; then
-  echo "❌ Application is not running on localhost:8081"
-  echo ""
-  echo "   To run the application with the correct environment variables:"
-  echo "   cd /Users/abhijitsen/IdeaProjects/amex-open-banking-payments"
-  echo "   export TRUELAYER_CLIENT_ID=\"$TRUELAYER_CLIENT_ID\""
-  echo "   export TRUELAYER_CLIENT_SECRET=\"$TRUELAYER_CLIENT_SECRET\""
-  echo "   export TRUELAYER_MERCHANT_ACCOUNT_ID=\"$TRUELAYER_MERCHANT_ACCOUNT_ID\""
-  echo "   export TRUELAYER_SIGNING_KEY_ID=\"$TRUELAYER_SIGNING_KEY_ID\""
-  echo "   export TRUELAYER_PRIVATE_KEY_PATH=\"$TRUELAYER_PRIVATE_KEY_PATH\""
-  echo "   ./gradlew quarkusDev"
-  exit 1
-fi
+  echo "⏳ Application is not running. Starting it..."
 
-echo "✅ Application is running on localhost:8081"
+  # Get the project directory
+  PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+  # Start the application in the background
+  cd "$PROJECT_DIR"
+  export LC_ALL=en_US.UTF-8
+  export LANG=en_US.UTF-8
+
+  # Start Quarkus dev mode in the background and redirect output to a log file
+  ./gradlew quarkusDev > /tmp/quarkus-app.log 2>&1 &
+  APP_PID=$!
+
+  # Wait for the application to start (with retries)
+  MAX_RETRIES=30
+  RETRY_COUNT=0
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -s http://localhost:8081/ > /dev/null 2>&1; then
+      echo "✅ Application started successfully (PID: $APP_PID)"
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    sleep 1
+  done
+
+  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ Failed to start application. Check logs:"
+    tail -20 /tmp/quarkus-app.log
+    kill $APP_PID > /dev/null 2>&1 || true
+    exit 1
+  fi
+else
+  echo "✅ Application is already running on localhost:8081"
+fi
 echo ""
 echo "1. Getting access token from TrueLayer auth server..."
 
@@ -126,7 +167,7 @@ PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8081/payment-intents \
   -d '{
     "traceId":"550e8400-e29b-41d4-a716-446655440003",
     "endToEndId":"e2e-014",
-    "amountInMinor":128,
+    "amountInMinor":100,
     "currency":"EUR",
     "provider":"mock-payments-fr-redirect"
   }')
