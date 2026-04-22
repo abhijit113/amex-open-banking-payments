@@ -171,7 +171,7 @@ PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8081/payment-intents \
   -d '{
     "traceId":"'"$TRACE_ID"'",
     "endToEndId":"'"$END_TO_END_ID"'",
-    "amountInMinor":100,
+    "amountInMinor":111,
     "currency":"EUR",
     "provider":"mock-payments-fr-redirect"
   }')
