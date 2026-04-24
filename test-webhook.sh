@@ -173,7 +173,7 @@ PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8081/payment-intents \
     "endToEndId":"'"$END_TO_END_ID"'",
     "amountInMinor":111,
     "currency":"EUR",
-    "provider":"mock-payments-fr-redirect"
+    "provider":"mock-payments-it-redirect"
   }')
 
 # Check if the response is valid JSON
