@@ -1,8 +1,11 @@
 package com.amex.payments.infrastructure.persistence.truelayer.service
 
 import com.amex.payments.infrastructure.persistence.truelayer.client.TrueLayerPaymentsClient
+import com.amex.payments.infrastructure.persistence.truelayer.client.TrueLayerPayoutsClient
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerCreatePaymentRequest
 import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerCreatePaymentResponse
+import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerCreatePayoutRequest
+import com.amex.payments.infrastructure.persistence.truelayer.dto.TrueLayerCreatePayoutResponse
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
@@ -15,6 +18,10 @@ class TrueLayerGateway {
     @Inject
     @RestClient
     lateinit var paymentsClient: TrueLayerPaymentsClient
+
+    @Inject
+    @RestClient
+    lateinit var payoutsClient: TrueLayerPayoutsClient
 
     @Inject
     lateinit var tokenService: TrueLayerTokenService
@@ -33,27 +40,72 @@ class TrueLayerGateway {
         val signature =
             signingService.sign(
                 method = "POST",
-                path = "/v3/payments",
+                path = TRUE_LAYER_PAYMENTS_PATH,
                 body = body,
                 idempotencyKey = idempotencyKey,
             )
 
         try {
             return paymentsClient.createPayment(
-                authorization = "Bearer $accessToken",
+                authorization = bearer(accessToken),
                 idempotencyKey = idempotencyKey,
                 signature = signature,
                 request = request,
             )
         } catch (e: WebApplicationException) {
-            val responseBody = e.response?.readEntity(String::class.java)
+            logTrueLayerError(
+                label = "PAYMENT",
+                exception = e,
+                requestBody = body,
+            )
+            throw e
+        }
+    }
 
-            println("===== TL PAYMENT ERROR START =====")
-            println("STATUS=${e.response?.status}")
-            println("REQUEST_BODY=$body")
-            println("RESPONSE_BODY=$responseBody")
-            println("===== TL PAYMENT ERROR END =====")
+    fun createPayout(request: TrueLayerCreatePayoutRequest): TrueLayerCreatePayoutResponse {
+        val accessToken = tokenService.getAccessToken()
+        val body = objectMapper.writeValueAsString(request)
+        val idempotencyKey = UUID.randomUUID().toString()
 
+        val signature =
+            signingService.sign(
+                method = "POST",
+                path = TRUE_LAYER_PAYOUTS_PATH,
+                body = body,
+                idempotencyKey = idempotencyKey,
+            )
+
+        try {
+            return payoutsClient.createPayout(
+                authorization = bearer(accessToken),
+                idempotencyKey = idempotencyKey,
+                signature = signature,
+                request = request,
+            )
+        } catch (e: WebApplicationException) {
+            logTrueLayerError(
+                label = "PAYOUT",
+                exception = e,
+                requestBody = body,
+            )
+            throw e
+        }
+    }
+
+    fun getPayout(id: String): TrueLayerCreatePayoutResponse {
+        val accessToken = tokenService.getAccessToken()
+
+        try {
+            return payoutsClient.getPayout(
+                authorization = bearer(accessToken),
+                id = id,
+            )
+        } catch (e: WebApplicationException) {
+            logTrueLayerError(
+                label = "GET PAYOUT",
+                exception = e,
+                requestBody = null,
+            )
             throw e
         }
     }
@@ -65,7 +117,7 @@ class TrueLayerGateway {
         val signature =
             signingService.sign(
                 method = "POST",
-                path = "/test-signature",
+                path = TRUE_LAYER_TEST_SIGNATURE_PATH,
                 body = body,
                 idempotencyKey = idempotencyKey,
             )
@@ -77,5 +129,34 @@ class TrueLayerGateway {
         println("===== TL TEST SIGNATURE END =====")
 
         return Triple(signature, body, idempotencyKey)
+    }
+
+    private fun bearer(accessToken: String): String = "Bearer $accessToken"
+
+    private fun logTrueLayerError(
+        label: String,
+        exception: WebApplicationException,
+        requestBody: String?,
+    ) {
+        val responseBody =
+            try {
+                exception.response?.readEntity(String::class.java)
+            } catch (_: Exception) {
+                null
+            }
+
+        println("===== TL $label ERROR START =====")
+        println("STATUS=${exception.response?.status}")
+        if (requestBody != null) {
+            println("REQUEST_BODY=$requestBody")
+        }
+        println("RESPONSE_BODY=$responseBody")
+        println("===== TL $label ERROR END =====")
+    }
+
+    companion object {
+        private const val TRUE_LAYER_PAYMENTS_PATH = "/v3/payments"
+        private const val TRUE_LAYER_PAYOUTS_PATH = "/v3/payouts"
+        private const val TRUE_LAYER_TEST_SIGNATURE_PATH = "/test-signature"
     }
 }

@@ -124,17 +124,32 @@ echo ""
 
 echo "2. Fetching debug signature from local app..."
 
-# Get debug signature from the local app
-export TL_DEBUG_JSON=$(curl -s http://localhost:8081/debug/truelayer/signature)
+TL_DEBUG_RESPONSE_FILE="/tmp/tl-debug-response.txt"
 
-if [ $? -ne 0 ]; then
-  echo "❌ Failed to fetch debug signature. Is the app running on localhost:8081?"
+HTTP_STATUS=$(curl -s -w "%{http_code}" \
+  -o "$TL_DEBUG_RESPONSE_FILE" \
+  http://localhost:8081/debug/truelayer/signature)
+
+export TL_DEBUG_JSON=$(cat "$TL_DEBUG_RESPONSE_FILE")
+
+echo "Debug endpoint HTTP status: $HTTP_STATUS"
+echo "Debug endpoint raw response:"
+echo "$TL_DEBUG_JSON"
+echo ""
+
+if [ "$HTTP_STATUS" != "200" ]; then
+  echo "❌ Debug signature endpoint failed"
   exit 1
 fi
 
-export TL_SIGNATURE=$(echo "$TL_DEBUG_JSON" | jq -r '.signature')
-export TL_BODY=$(echo "$TL_DEBUG_JSON" | jq -r '.body')
-export TL_IDEMPOTENCY_KEY=$(echo "$TL_DEBUG_JSON" | jq -r '.idempotencyKey')
+if ! echo "$TL_DEBUG_JSON" | jq . > /dev/null 2>&1; then
+  echo "❌ Debug signature endpoint did not return valid JSON"
+  exit 1
+fi
+
+export TL_SIGNATURE=$(echo "$TL_DEBUG_JSON" | jq -r '.signature // empty')
+export TL_BODY=$(echo "$TL_DEBUG_JSON" | jq -r '.body // empty')
+export TL_IDEMPOTENCY_KEY=$(echo "$TL_DEBUG_JSON" | jq -r '.idempotencyKey // empty')
 
 if [ -z "$TL_SIGNATURE" ] || [ "$TL_SIGNATURE" = "null" ]; then
   echo "❌ Failed to get signature from app. Response:"
